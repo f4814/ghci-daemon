@@ -8,9 +8,11 @@ module Language.Haskell.GhciDaemon.Server
 
 import           Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BC
+import           Data.Semigroup ((<>))
 import           Language.Haskell.Ghcid (Ghci, startGhci, exec, interrupt)
 import           Network.Socket hiding (send, sendTo, recv, recvFrom)
 import           Network.Socket.ByteString (send, recv)
+import           Options.Applicative
 
 -- |Options passed to the Server (e.g as cli arguments)
 data Settings = Settings
@@ -21,13 +23,34 @@ data Settings = Settings
 -- |All information needed to run the server
 data Daemon = Daemon Settings Socket Ghci
 
+settings :: Parser Settings
+settings = Settings 
+    <$> option auto
+         ( long "port"
+        <> short 'p'
+        <> help "The port for the server to listen to"
+        <> metavar "PORT"
+        <> value 3497)
+    <*> strOption
+         ( long "cmd"
+        <> short 'c'
+        <> help "The command to run ghci"
+        <> metavar "GHCICMD"
+        <> value "stack ghci"
+         )
 -- |Create a daemon
-mkDaemon :: Settings -> IO Daemon
-mkDaemon s = do
+mkDaemon :: IO Daemon
+mkDaemon = do
+    s <- execParser opts
     sock <- openSocket s
     (ghci, msg) <- startGhci (cmd s) Nothing (\_ -> putStrLn)
     print msg
     return (Daemon s sock ghci)
+        where
+            opts = info (settings <**> helper)
+                 ( fullDesc
+                <> progDesc "Run a ghci daemon"
+                <> header "ghci-daemon")
 
 -- |Run a daemon
 runDaemon :: Daemon -> IO ()
