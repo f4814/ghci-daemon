@@ -1,0 +1,1 @@
+ghci-daemon: Network.Socket.recvBuf: invalid argument (Transport endpoint is not connected)

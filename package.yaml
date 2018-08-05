@@ -1,0 +1,59 @@
+name:                ghci-daemon
+version:             0.1.0.0
+github:              "fabiangeiselhart/ghci-daemon"
+license:             MIT
+author:              "Fabian Geiselhart"
+maintainer:          "public@f4814n.de"
+copyright:           "2018 Fabian Geiselhart"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+synopsis:            Run ghci as daemon with access through client executable
+category:            Haskell
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/ghci-daemon#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+
+ghc-options:
+  - -Wall
+
+library:
+  source-dirs: src
+  dependencies:
+    - daemons
+    - optparse-applicative
+    - process
+    - pipes
+    - pipes-network
+    - pipes-bytestring
+    - bytestring
+    - ghcid
+    - network
+
+executables:
+  ghci-daemon:
+    main:                Main.hs
+    source-dirs:         server
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - ghci-daemon
+  ghci-client:
+    main:                Main.hs
+    source-dirs:         client
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - ghci-daemon
