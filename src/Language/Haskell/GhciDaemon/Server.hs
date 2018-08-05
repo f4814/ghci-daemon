@@ -1,11 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Language.Haskell.GhciDaemon.Server
-    ( Settings(..)
+    ( Daemon(..)
+    , Settings(..)
     , mkDaemon
     , runDaemon
     , killDaemon
+    , ghciDaemon
     ) where
 
+import           Control.Exception (bracket)
 import           Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BC
 import           Data.Semigroup ((<>))
@@ -13,15 +16,21 @@ import           Language.Haskell.Ghcid (Ghci, startGhci, exec, interrupt)
 import           Network.Socket hiding (send, sendTo, recv, recvFrom)
 import           Network.Socket.ByteString (send, recv)
 import           Options.Applicative
+import           System.Posix.Daemon (Redirection(DevNull), runDetached)
 
 -- |Options passed to the Server (e.g as cli arguments)
 data Settings = Settings
     { port     :: Int
     , cmd      :: String
+    , nofork   :: Bool
     }
 
 -- |All information needed to run the server
-data Daemon = Daemon Settings Socket Ghci
+data Daemon = Daemon
+    { dSettings :: Settings
+    , dSocket   :: Socket
+    , dGhci     :: Ghci
+    }
 
 settings :: Parser Settings
 settings = Settings 
@@ -36,8 +45,20 @@ settings = Settings
         <> short 'c'
         <> help "The command to run ghci"
         <> metavar "GHCICMD"
-        <> value "stack ghci"
-         )
+        <> value "stack ghci")
+    <*> switch
+         ( long "no-fork"
+        <> short 'n'
+        <> help "Do not run in background")
+
+ghciDaemon :: IO ()
+ghciDaemon = do
+    d <- mkDaemon
+    let act = bracket (return d) killDaemon runDaemon
+    if nofork . dSettings $ d
+        then act
+        else runDetached Nothing DevNull act
+
 -- |Create a daemon
 mkDaemon :: IO Daemon
 mkDaemon = do

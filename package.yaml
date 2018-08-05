@@ -33,6 +33,7 @@ library:
     - bytestring
     - ghcid
     - network
+    - daemons
 
 executables:
   ghci-daemon:
