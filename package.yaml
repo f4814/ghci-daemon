@@ -24,16 +24,12 @@ dependencies:
 
 ghc-options:
   - -Wall
+  - -Wcompat
 
 library:
   source-dirs: src
   dependencies:
-    - daemons
     - optparse-applicative
-    - process
-    - pipes
-    - pipes-network
-    - pipes-bytestring
     - bytestring
     - ghcid
     - network

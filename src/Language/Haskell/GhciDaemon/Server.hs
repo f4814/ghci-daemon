@@ -1,80 +1,53 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Language.Haskell.GhciDaemon.Server
-    ( Daemon(..)
-    , startServer
-    , killServer
-    , server
+    ( Settings(..)
+    , mkDaemon
+    , runDaemon
+    , killDaemon
     ) where
 
-import Options.Applicative (Parser(..), strOption, long, short, metavar, help)
-import Data.Semigroup ((<>))
-import System.Posix.Daemon (Redirection(..), runDetached)
-import System.Process (CreateProcess(..), StdStream(..), ProcessHandle(..), createProcess, shell, withCreateProcess)
-import System.IO (Handle(), BufferMode(..), hIsEOF, hGetLine, hPutStr, hPutStrLn, hSetBuffering, hFlush)
-import Control.Monad (unless)
-import Control.Concurrent (threadDelay)
-import Pipes
-import Pipes.Core
-import Pipes.ByteString (toHandle, fromHandle)
-import qualified Pipes.ByteString as P
-import qualified Pipes.Prelude as P
-import Pipes.Network.TCP (fromSocket, toSocket)
-import Network.Socket --hiding (send, sendTo, recv, recvFrom)
--- import Network.Socket.ByteString
-import Control.Monad (forever)
-import Control.Concurrent (forkIO)
-import qualified Data.ByteString as BS
-import Language.Haskell.Ghcid
+import           Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BC
+import           Language.Haskell.Ghcid (Ghci, startGhci, exec, interrupt)
+import           Network.Socket hiding (send, sendTo, recv, recvFrom)
+import           Network.Socket.ByteString (send, recv)
 
--- |Options passed to the Server
-data Daemon = Daemon
+-- |Options passed to the Server (e.g as cli arguments)
+data Settings = Settings
     { port     :: Int
-    , ghciFile :: Maybe FilePath
-    , pidFile  :: FilePath
     , cmd      :: String
     }
 
--- daemon :: Parser Daemon
--- daemon = Daemon
---     <$> strOption
---          ( long "port"
---         <> short 'p'
---         <> metavar "PORT"
---         <> help "port to bind to")
---     <*> strOption
---          ( long "ghciFile"
---         <> short 'f'
---         <> metavar "FILE"
---         <> help "ghci file to load at startup")
---     <*> strOption
---          ( long "pidFile"
---         <> metavar "FILE"
---         <> help "pidfile to use")
+-- |All information needed to run the server
+data Daemon = Daemon Settings Socket Ghci
 
--- |Start the server process
-startServer :: Daemon -> IO ()
--- startServer d = runDetached (Just $ pidFile d) (ToFile "test") (server d)
-startServer d = do
-    sock <- openSocket d
-    (ghci, msg) <- startGhci (cmd d) Nothing (\_ -> putStrLn)
+-- |Create a daemon
+mkDaemon :: Settings -> IO Daemon
+mkDaemon s = do
+    sock <- openSocket s
+    (ghci, msg) <- startGhci (cmd s) Nothing (\_ -> putStrLn)
     print msg
-    server sock d ghci
+    return (Daemon s sock ghci)
 
--- |Server process
-server :: Socket -> Daemon -> Ghci -> IO ()
-server s d g = forever $ do
-    (conn, _) <- accept s
-    cmd <- recv conn 4096
-    res <- exec g cmd
-    send conn (unlines res)
+-- |Run a daemon
+runDaemon :: Daemon -> IO ()
+runDaemon (Daemon _ sock ghci) = forever $ do
+    (conn, _) <- accept sock
+    msg <- BC.unpack <$> recv conn 4096
+    res <- exec ghci msg
+    _ <- send conn (BC.pack . unlines $ res)
     close conn
 
+-- |Try to stop gracefully. Kill ghci if this does not succeed.
+killDaemon :: Daemon -> IO ()
+killDaemon (Daemon _ sock ghci) = do
+    close sock
+    interrupt ghci
+
 -- |Open the network socket
--- TODO reade Daemon
-openSocket :: Daemon -> IO Socket
-openSocket d = do
-    addr:_ <- getAddrInfo (Just hints) Nothing (Just "5000")
+openSocket :: Settings -> IO Socket
+openSocket s = do
+    addr:_ <- getAddrInfo (Just hints) Nothing (Just . show $ port s)
     sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
     setSocketOption sock ReuseAddr 1
     bind sock (addrAddress addr)
@@ -85,36 +58,3 @@ openSocket d = do
                  addrFlags = [AI_PASSIVE]
                , addrSocketType = Stream
                }
-
--- |Main loop
-mainLoop :: Socket -> Handle -> Handle -> Handle -> IO ()
-mainLoop sock inp out err = forever $ do
-    putStrLn "Loop"
-    (conn, peer) <- accept sock
-    runEffect $ fromSocket conn 4096 >-> ghciConsumer inp
-    runEffect $ ghciProducer out err >-> toSocket conn
-    close conn
-
-ghciProducer :: Handle -> Handle -> Producer BS.ByteString IO ()
-ghciProducer h e = do
-    str <- lift $ BS.hGetLine h
-    err <- lift $ BS.hGetLine e
-    lift $ BS.putStrLn str
-    lift . BS.putStrLn $ "ERR: " <> err
-    yield str
-    yield "\n"
-    if str `contains` "~#GHCI-DAEMON#~"
-        then lift $ return ()
-        else do
-            ghciProducer h e
-
-ghciConsumer :: Handle -> Consumer BS.ByteString IO ()
-ghciConsumer h = do
-    str <- await
-    lift . BS.hPutStrLn h $ str
-
-contains :: BS.ByteString -> BS.ByteString -> Bool
-contains m s = (snd $ BS.breakSubstring s m) /= ""
-
-killServer :: IO ()
-killServer = undefined
