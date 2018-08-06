@@ -34,6 +34,7 @@ library:
     - ghcid
     - network
     - daemons
+    - monad-loops
 
 executables:
   ghci-daemon:
