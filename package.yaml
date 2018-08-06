@@ -1,6 +1,6 @@
 name:                ghci-daemon
 version:             0.1.0.0
-github:              "fabiangeiselhart/ghci-daemon"
+github:              "f4814/ghci-daemon"
 license:             MIT
 author:              "Fabian Geiselhart"
 maintainer:          "public@f4814n.de"
@@ -17,7 +17,7 @@ category:            Haskell
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/ghci-daemon#readme>
+description:         Please see the README on GitHub at <https://github.com/f4814/ghci-daemon#readme>
 
 dependencies:
 - base >= 4.7 && < 5
