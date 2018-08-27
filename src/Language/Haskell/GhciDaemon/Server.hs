@@ -8,11 +8,14 @@ module Language.Haskell.GhciDaemon.Server
     , ghciDaemon
     ) where
 
+import           Control.Concurrent (forkIO)
 import           Control.Exception (bracket)
 import           Control.Monad (forever)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import           Data.Semigroup ((<>))
-import           Language.Haskell.Ghcid (Ghci, startGhci, exec, interrupt)
+import           Language.Haskell.Ghcid (Ghci, startGhci, interrupt)
+import qualified Language.Haskell.Ghcid as Ghcid
 import           Network.Socket hiding (send, sendTo, recv, recvFrom)
 import           Network.Socket.ByteString (send, recv)
 import           Options.Applicative
@@ -77,10 +80,22 @@ mkDaemon = do
 runDaemon :: Daemon -> IO ()
 runDaemon (Daemon _ sock ghci) = forever $ do
     (conn, _) <- accept sock
-    msg <- BC.unpack <$> recv conn 4096
-    res <- exec ghci msg
-    _ <- send conn (BC.pack . unlines $ res)
-    close conn
+    _ <- forkIO $ thread conn
+    return ()
+    where
+        thread c = do
+            msg <- recv c 4096
+            res <- exec ghci msg
+            _ <- send c res
+            close c
+
+-- |Execute command the apropriate way (take action on deamon, or send to ghci
+-- |process
+exec :: Ghci -> BS.ByteString -> IO BS.ByteString
+exec ghci msg
+    | msg == "GHCI-DAEMON: restart" = undefined
+    | msg == "GHCI-DAEMON: interrupt" = interrupt ghci >> return "Interrupted"
+    | otherwise = (BC.pack . unlines) <$> Ghcid.exec ghci (BC.unpack msg)
 
 -- |Try to stop gracefully. Kill ghci if this does not succeed.
 killDaemon :: Daemon -> IO ()
@@ -95,7 +110,7 @@ openSocket s = do
     sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
     setSocketOption sock ReuseAddr 1
     bind sock (addrAddress addr)
-    listen sock 1
+    listen sock 2
     return sock
         where
             hints = defaultHints {

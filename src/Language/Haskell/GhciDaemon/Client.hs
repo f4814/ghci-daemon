@@ -11,7 +11,6 @@ module Language.Haskell.GhciDaemon.Client
 import           Control.Monad (when)
 import           Control.Monad.Loops (untilM_)
 import           Control.Exception (bracket)
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import           Data.Semigroup ((<>))
 import           Options.Applicative
@@ -23,6 +22,7 @@ import           System.IO (BufferMode(..), stdin, hIsEOF, hSetBuffering)
 data Settings = Settings
     { port :: Int
     , repl :: Bool
+    , free :: Bool
     , cmd  :: String
     , host :: String
     }
@@ -45,6 +45,10 @@ settings = Settings
          ( long "repl"
         <> short 'r'
         <> help "Start a REPL")
+    <*> switch
+         ( long "free"
+        <> short 'f'
+        <> help "Free the ghci process")
     <*> strOption
          ( long "cmd"
         <> short 'c'
@@ -83,6 +87,8 @@ mkClient = do
 -- |Execute a Client
 runClient :: Client -> IO ()
 runClient c = do
+    when ((free . cSettings $ c)) $
+        exec (cSocket c) "GHCI-DAEMON: interrupt"
     when ((cmd . cSettings $ c) /= "") $
         exec (cSocket c) (cmd . cSettings $ c)
     when (repl . cSettings $ c) $ do
@@ -111,4 +117,5 @@ ghciClient = do
 
 -- |Close connection to server
 closeClient :: Client -> IO ()
-closeClient Client {cSocket = sock, cSettings = _} = close sock
+closeClient Client {cSocket = sock, cSettings = _} = do
+    close sock
